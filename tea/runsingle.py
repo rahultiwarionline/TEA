@@ -61,7 +61,8 @@ import shutil
 import subprocess
 import numpy as np
 import sys
-
+import balance
+import iterate
 import makeheader as mh
 
 # =============================================================================
@@ -112,7 +113,7 @@ if location_out[-1] != '/':
     location_out += '/'
 
 # Retrieve user inputs file
-infile  = sys.argv[1:][0]
+infile = raw_input("Enter Input ATM File Location> ")
 
 # If input file does not exist break
 try:
@@ -121,7 +122,8 @@ except:
     raise IOError ("\n\nSingle T-P input file does not exist.\n")
 
 # Retrieve current output directory name given by user 
-desc    = sys.argv[1:][1]
+desc    = raw_input("What would you like the result directory to be named?> ")
+
 
 # Check if output directory exists and inform user
 if os.path.exists(location_out + desc):
@@ -179,8 +181,8 @@ else:               inshell = False   # OSx / Linux
 
 # Execute main TEA loop
 mh.make_singleheader(infile, desc, thermo_dir)
-subprocess.call([loc_balance, loc_headerfile, desc, str(doprint)], shell=inshell)
-subprocess.call([loc_iterate, loc_headerfile, desc, str(doprint)], shell=inshell)
+balanceFunction(loc_headerfile, desc, doprint)
+iterator(loc_headerfile, desc, doprint)
 
 # Save or delete headers file
 if save_headers == False:
