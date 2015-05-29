@@ -181,7 +181,7 @@ else:               inshell = False   # OSx / Linux
 
 # Execute main TEA loop
 mh.make_singleheader(infile, desc, thermo_dir)
-balanceFunction(loc_headerfile, desc, doprint)
+balanceFunction(loc_headerfile, desc, location_out, doprint)
 iterator(loc_headerfile, desc, doprint)
 
 # Save or delete headers file
