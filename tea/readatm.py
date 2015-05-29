@@ -1,4 +1,3 @@
-#! /usr/bin/env python
 
 # ******************************* START LICENSE *******************************
 # Thermal Equilibrium Abundances (TEA), a code to calculate gaseous molecular
@@ -48,295 +47,107 @@
 # Thank you for testing TEA!
 # ******************************* END LICENSE *******************************
 
-from readconf import *
-
-# Setup for time/speed testing
-if times:
-    import time
-    start = time.time()
-
 import numpy as np
-import sys
-import ntpath
-import os
-import shutil
-import subprocess
 
-import format as form
-import makeheader as mh
-import readatm as ra
+def readatm(atm_file, spec_mark='#SPECIES', tea_mark='#TEADATA'):
+    '''
+    This function reads a pre-atm file and returns data that TEA will use.
+    It opens a pre-atmosphere file to find markers for species and TEA data,
+    retrieves the species list, reads data below the markers, and fills out
+    data into corresponding arrays. It also returns number of runs TEA must
+    execute for each T-P. The function is used by runatm.py.
 
-# =============================================================================
-# This program runs TEA over a pre-atm file that contains multiple T-P points.
-# The code first retrieves the pre-atm file, and the current directory
-# name given by the user. Then, it sets locations of all necessary modules
-# and directories of files that will be used. It allocates an array to store
-# the final abundances for each species of each T-P run. The program loops over
-# all lines (T-P points) in the pre-atm file and executes the modules in the 
-# following order: readatm.py, makeheader.py, balance,py, iterate.py, and 
-# readoutput.py. Iterate.py executes lagrange.py and lambdacorr.py. 
-# Readoutput.py reads results from the TEA iteration loop executed in 
-# iterate.py. The code then opens the final atm file to write the results. 
-# It takes first common lines from the pre-atm file and writes the data from 
-# the stored pressure, temperature, and abundances array. The code has a 
-# condition to save or delete all intermediate files, time stamps for checking
-# the speed of execution, and is verbose for debugging purposes. If these files
-# are saved, the function will create a unique directory for each T-P point. 
-# This functionality is controlled in the TEA.cfg file. The final results with 
-# the input and the configuration files are saved in the results/ directory.
-# The pre-atmospheric file, config file, and abundances file used for this run
-# are copied to inputs/ directory.
-#
-# This module prints on screen the current T-P line from the pre-atm file, the
-# current iteration number, and informs the user that minimization is done.
-# Example:
-# 5
-#  100
-# Maximum iteration reached, ending minimization.
-#
-# The program is executed with in-shell inputs:
-# runatm.py <MULTITP_INPUT_FILE_PATH> <DIRECTORY_NAME>
-# Example: ../TEA/tea/runatm.py ../TEA/tea/doc/examples/multiTP/atm_inputs/multiTP_Example.atm example_multiTP
-# =============================================================================
+    Parameters
+    -----------
+    atm_file:  ASCII file
+               Pre-atm file that contains species, radius, pressure, 
+               temperature, and elemental abundances data.
+    spec_mark: string
+               Marker used to locate species data in pre-atm file
+               (located in the line immediately preceding the data).
+    tea_mark:  string
+               Marker used to locate radius, pressure, temperature, and 
+               elemental abundances data (located in the line immediately
+               preceding the data).
 
-# Time / speed testing
-if times:
-    end = time.time()
-    elapsed = end - start
-    print("runatm.py imports:  " + str(elapsed))
+    Returns
+    -------
+    n_runs:    float
+               Number of runs TEA will execute for each T-P.
+    spec_list: string array
+               Array containing names of molecular species.
+    radi_arr:  float array
+               Array containing radius data.
+    pres_arr:  float array
+               Array containing pressure data.
+    temp_arr:  float array
+               Array containing temperature data.
+    atom_arr:  string array
+               Array containing elemental symbols and abundances.
+    marker[0]: integer
+               Marks line number in pre-atm file where data start.
+    '''
 
-# Print license
-print("\n\
-================= Thermal Equilibrium Abundances (TEA) =================\n\
-A code to calculate gaseous molecular abundances under thermochemical \n\
-equilibrium conditions. \n\
-Copyright (C) 2014 University of Central Florida.  All rights reserved. \n\
-Test version, not for redistribution.  \n\
-For feedback, contact: \n\
-Jasmina Blecic <jasmina@physics.ucf.edu>        \n\
-Joseph Harrington <jh@physics.ucf.edu>          \n\
-========================================================================\n")
-
-# Correct directory names
-if location_TEA[-1] != '/':
-    location_TEA += '/'
-
-if location_out[-1] != '/':
-    location_out += '/'
-
-# Retrieve pre-atm file
-infile  = '../doc/examples/quick_example/quick_example.atm'
-
-# If input file does not exist break
-try:
-    f = open(infile)
-except:
-    raise IOError ("\n\nPre-atmospheric file does not exist.\n")
-
-# Retrieve current output directory name given by user
-desc    = 'run_example'
-
-# Set up locations of necessary scripts and directories of files
-inputs_dir       = location_out + desc + "/inputs/"
-thermo_dir       = location_TEA + "lib/gdata"
-loc_balance      = location_TEA + "tea/balance.py"
-loc_iterate      = location_TEA + "tea/iterate.py"
-loc_headerfile   = location_out + desc + "/headers/" + "header_" + desc + ".txt"
-loc_outputs      = location_out + desc + "/outputs/"
-loc_transient    = location_out + desc + "/outputs/" + "transient/"
-out_dir          = location_out + desc + "/results/"
-single_res       = ["results-machine-read.txt", "results-visual.txt"]
-
-# Check if output directory already exists and inform user
-if os.path.exists(inputs_dir):
-    raw_input("  Output directory " + str(inputs_dir) + " already exists.\n"
-              "  Press enter to continue and overwrite existing files,\n"
-              "  or quit and choose another output name.\n")
-
-# Create directories
-if not os.path.exists(inputs_dir): os.makedirs(inputs_dir)
-if not os.path.exists(out_dir): os.makedirs(out_dir)
-if not os.path.exists(loc_transient): os.makedirs(loc_transient)
-
-# Check if config file exists in the working directory
-TEA_config = 'TEA.cfg'
-try:
-    f = open(TEA_config)
-except IOError:
-    print("\nConfig file is missing. Place TEA.cfg in the working directory.\n")
-
-# Inform user if TEA.cfg file already exists in inputs/ directory
-if os.path.isfile(inputs_dir + TEA_config):
-    print("  " + str(TEA_config) + " overwritten in inputs/ directory.")
-# Copy TEA.cfg file to current inputs directory
-shutil.copy2(TEA_config, inputs_dir + TEA_config)
-
-# Inform user if abundances file already exists in inputs/ directory
-head, abun_filename = ntpath.split(abun_file)
-if os.path.isfile(inputs_dir + abun_filename):
-    print("  " + str(abun_filename) + " overwritten in inputs/ directory.")
-# Copy abundances file to inputs/ directory
-shutil.copy2(abun_file, inputs_dir + abun_filename)
-
-# Inform user if pre-atm file already exists in inputs/ directory
-head, preatm_filename = ntpath.split(infile)
-if os.path.isfile(inputs_dir + preatm_filename):
-    print("  " + str(preatm_filename) + " overwritten in inputs/ directory.")
-else:
-    # Copy pre-atm file to inputs/ directory
-    shutil.copy2(infile, inputs_dir + preatm_filename)
-
-# Read pre-atm file
-n_runs, spec_list, pres_arr, temp_arr, atom_arr, end_head = \
-                                                 ra.readatm(infile)
-
-# Correct species list for only species found in thermo_dir
-gdata_files = os.listdir(thermo_dir)
-good_spec   = []
-for i in np.arange(np.size(spec_list)):
-    spec_file = spec_list[i] + '.txt'
-    if spec_file in gdata_files:
-        good_spec = np.append(good_spec, spec_list[i])
-    else:
-        print('Species ' + spec_list[i] + ' does not exist in /' \
-                  + thermo_dir.split("/")[-1] + ' ! IGNORED THIS SPECIES.')
-
-# Update list of valid species
-spec_list = np.copy(good_spec)
-
-# =================== Start writing final atm file ===================
-# Open final atm file for writing, keep open to add new lines 
-fout_name = out_dir + desc + '.tea'
-fout = open(fout_name, 'w+')
-
-# Write a header file
-header      = "# This is a final TEA output file with calculated abundances (mixing fractions) for all listed species.\n\
-# Units: pressure (bar), temperature (K), abundance (unitless)."
-fout.write(header + '\n\n')
-fout.write('#SPECIES\n')
-
-# Write corrected species list into pre-atm file and continue
-for i in np.arange(np.size(spec_list)):
-    fout.write(spec_list[i] + ' ')
-fout.write("\n\n")
-fout.write("#TEADATA\n")
-
-# Write data header from the pre-atm file into each column of atm file 
-fout.write(pres_arr[0].ljust(10) + ' ')
-fout.write(temp_arr[0].ljust(7) + ' ')
-for i in np.arange(np.size(spec_list)):
-    fout.write(spec_list[i].ljust(10)+' ')
-fout.write('\n')
-
-# Times / speed check for pre-loop runtime
-if times:
-    new = time.time()
-    elapsed = new - end
-    print("pre-loop:           " + str(elapsed))
-
-# Detect operating system for sub-process support
-if os.name == 'nt': inshell = True    # Windows
-else:               inshell = False   # OSx / Linux
-
-# Allocate abundances matrix for all species and all T-Ps
-abun_matrix = np.zeros(np.size(spec_list))
-
-
-# ============== Execute TEA for each T-P ==============
-# Loop over all lines in pre-atm file and execute TEA loop
-for q in np.arange(n_runs)[1:]:
-
-    # Print for debugging purposes
-    if doprint:
-        print("\nReading atm file, TP line " + str(q))
-    else:
-        print('\n'+ str(q))
+    # Get current working directory and pre-atm file name
+    file = atm_file
     
-    # Radius, pressure, and temp for the current line    
-    pres = pres_arr[q]
-    temp = temp_arr[q]
-    
-    # Produce header for the current line
-    mh.make_atmheader(q, spec_list, \
-                              pres, temp, atom_arr, desc, thermo_dir)
-    
-    # Time / speed testing for balance.py
-    if times:
-        ini = time.time()
-    
-    # Get balanced initial guess for the current line, run balance.py
-    subprocess.call([loc_balance, loc_headerfile, desc], shell = inshell)
-    
-    # Retrieve balance runtime
-    if times:
-        fin = time.time()
-        elapsed = fin - ini
-        print("balance.py:         " + str(elapsed))
-    
-    # Execute main TEA loop for the current line, run iterate.py
-    subprocess.call([loc_iterate, loc_headerfile, desc], shell = inshell)
+    # Open file to read
+    f = open(file, 'r')
 
-    # Read output of TEA loop
-    header, it_num, speclist, y, x, delta, y_bar, x_bar, delta_bar \
-        = form.readoutput(location_out + desc + '/results/' + single_res[0])
+    # Read data from all lines in info list
+    info = []
+    for line in f.readlines():
+        l = [value for value in line.split()]
+        info.append(l)    
+    f.close()
 
-    # Insert results from the current line (T-P) to atm file
-    fout.write(pres.rjust(10) + ' ')
-    fout.write(temp.rjust(7) + ' ')
-    for i in np.arange(np.size(spec_list)):
-        cur_abn = x[i] / x_bar
-        fout.write('%1.4e'%cur_abn + ' ')
-    fout.write('\n')    
-   
-    # Save or delete intermediate headers
-    if save_headers:
-        # Save header files for each T-P
-        old_name = loc_headerfile
-        new_name = loc_headerfile[0:-4] + "_" + '%.0f'%float(temp) + "K_" + \
-                   '%1.2e'%float(pres) + "bar" + loc_headerfile[-4::]
-        if os.path.isfile(new_name):
-            os.remove(new_name)
-        os.rename(old_name, new_name)
-    else:
-        # Delete header files for each T-P
-        shutil.rmtree(location_out + desc + "/headers/" )
+    # Initiate list of species and TEA markers 
+    marker = np.zeros(2, dtype=int) 
+
+    # Number of rows in file
+    ninfo  = np.size(info)         
     
-    # Save or delete lagrange.py, lambdacorr.py outputs and single T-P results
-    if save_outputs:
-        # Save directory for each T-P and its output files
-        if not os.path.exists(loc_outputs): os.makedirs(loc_outputs)
-        old_name = loc_transient
-        new_name = loc_outputs + desc + "_" + '%.0f'%float(temp) + "K_"  \
-                   '%1.2e'%float(pres) + "bar" + loc_outputs[-1::]
-        if os.path.exists(new_name):
-            for file in os.listdir(new_name):
-                os.remove(new_name + file)
-            shutil.rmtree(new_name)
-        os.rename(old_name, new_name)
+    # Set marker list to the lines where data start
+    for i in np.arange(ninfo):
+        if info[i] == [spec_mark]:
+            marker[0] = i + 1
+        if info[i] == [tea_mark]:
+            marker[1] = i + 1
+    
+    # Retrieve species list using the species marker 
+    spec_list  = info[marker[0]]       
+    
+    # Retrieve labels for data array
+    data_label = np.array(info[marker[1]]) 
 
-        # Save directory for each single T-P result and its results
-        single_dir = out_dir + "results_" + '%.0f'%float(temp) + "K_" + \
-                     '%1.2e'%float(pres) + "bar" + "/"
-        if not os.path.exists(single_dir): os.makedirs(single_dir)
-        for file in single_res:
-            if os.path.isfile(single_dir + file):
-                os.remove(single_dir + file)
-            os.rename(out_dir + file, single_dir + file) 
-    else:
-        # Delete output directories and files
-        shutil.rmtree(loc_outputs)
-        # Delete single T-P result directories and files
-        for file in single_res:
-            os.remove(out_dir + file)
+    # Number of labels in data array
+    ncols      = np.size(data_label)
+ 
+    # Number of lines to read for data table (inc. label)  
+    nrows      = ninfo - marker[1]     
+    
+    # Allocate data array
+    data = np.empty((nrows, ncols), dtype=np.object)
+    
+    # Fill in data array
+    for i in np.arange(nrows):
+        data[i] = np.array(info[marker[1] + i])
+    
+    # Take column numbers of non-element data
+    ipres = np.where(data_label == '#Pressure')[0][0]
+    itemp = np.where(data_label == 'Temp'     )[0][0]
 
-# Close atm file
-fout.close()
+    # Mark number of columns preceding element columns
+    iatom = 2 
+    
+    # Place data into corresponding arrays     
+    pres_arr = data[:,ipres]      
+    temp_arr = data[:,itemp]      
+    atom_arr = data[:,iatom:]    
+    
+    # Number of times TEA will have to be executed for each T-P
+    n_runs = data.shape[0]  
+    
+    return n_runs, spec_list, pres_arr, temp_arr, atom_arr, marker[0]
 
-# Print on-screen
-print("\n  Species abundances calculated.\n  Created TEA atmospheric file.")
 
-# Time / speed testing
-if times:
-    end = time.time()
-    elapsed = end - start
-    print("Overall run time:   " + str(elapsed) + " seconds")

@@ -87,158 +87,158 @@ from   format import printout
 # The program is executed by runatm.py and can be executed alone with in-shell
 # input: iterate.py <HEADER_FILE> <DIRECTORY_NAME>
 # =============================================================================
+def iterator(head, destination, location_out):
+    # Correct location_TEA name
+    if location_out[-1] != '/':
+        location_out += '/'
 
-# Correct location_TEA name
-if location_out[-1] != '/':
-    location_out += '/'
-
-# Time / speed testing
-if times:
-    end = time.time()
-    elapsed = end - start
-    print("iterate.py imports: " + str(elapsed))
-
-# Read run-time arguments
-header = argv[1:][0]              # Name of header file
-desc   = argv[1:][1]              # Directory name
-
-# Create and name outputs and results directories if they do not exist
-datadir   = location_out + desc + '/outputs/' + 'transient/'
-datadirr  = location_out + desc + '/results'                
-
-if not os.path.exists(datadir): os.makedirs(datadir)
-if not os.path.exists(datadirr): os.makedirs(datadirr)
-
-# Retrieve header info
-inhead    = form.readheader(header)
-pressure  = inhead[0]
-temp      = inhead[1]
-
-# Locate and read initial iteration output from balance.py
-infile    = datadir + '/lagrange-iteration-0-machine-read.txt'
-input     = form.readoutput(infile)
-
-# Retrieve and set initial values
-speclist  = input[2]
-x         = input[3]
-x_bar     = input[6]
-
-# Set up first iteration 
-it_num  = 1
-repeat  = True
-
-# Prepare data object for iterative process 
-#         (see description of the 'direct' object in lagrange.py)
-lambdacorr_data = [header, 0, speclist, x, x, 0, x_bar, x_bar, 0]
-
-# Time / speed testing
-if times:
-    new = time.time()
-    elapsed = new - end
-    print("pre-loop setup:     " + str(elapsed))
-
-# ====================== PERFORM MAIN TEA LOOP ====================== #
-
-while repeat:
-    # Output iteration number
-    if ((not doprint) & (not times)):
-        stdout.write(' ' + str(it_num) + '\r')
-        stdout.flush()
-
-    # Time / speed testing for lagrange.py
+    # Time / speed testing
     if times:
-        ini = time.time()
-    
-    # Execute Lagrange minimization
-    lagrange_data = lg.lagrange(it_num, datadir, doprint, lambdacorr_data)
-    
-    # Time / speed testing for lagrange.py
+        end = time.time()
+        elapsed = end - start
+        print("iterate.py imports: " + str(elapsed))
+
+    # Read run-time arguments
+    header = head              # Name of header file
+    desc   = destination              # Directory name
+
+    # Create and name outputs and results directories if they do not exist
+    datadir   = location_out + desc + '/outputs/' + 'transient/'
+    datadirr  = location_out + desc + '/results'                
+
+    if not os.path.exists(datadir): os.makedirs(datadir)
+    if not os.path.exists(datadirr): os.makedirs(datadirr)
+
+    # Retrieve header info
+    inhead    = form.readheader(header)
+    pressure  = inhead[0]
+    temp      = inhead[1]
+
+    # Locate and read initial iteration output from balance.py
+    infile    = datadir + '/lagrange-iteration-0-machine-read.txt'
+    input     = form.readoutput(infile)
+
+    # Retrieve and set initial values
+    speclist  = input[2]
+    x         = input[3]
+    x_bar     = input[6]
+
+    # Set up first iteration 
+    it_num  = 1
+    repeat  = True
+
+    # Prepare data object for iterative process 
+    #         (see description of the 'direct' object in lagrange.py)
+    lambdacorr_data = [header, 0, speclist, x, x, 0, x_bar, x_bar, 0]
+
+    # Time / speed testing
     if times:
-        fin = time.time()
-        elapsed = fin - ini
-        print("lagrange" + str(it_num).rjust(4) + " :      " + str(elapsed))    
-      
-    # Print for debugging purposes
-    if doprint:
-        printout('Iteration %d Lagrange complete. Starting lambda correction...', it_num)
-    
-    # Take final x_i mole numbers from last Lagrange calculation 
-    lagrange_x = lagrange_data[4]
-    
-    # Check if x_i have negative mole numbers, and if yes perform lambda correction
-    if where((lagrange_x < 0) == True)[0].size != 0:
-        # Print for debugging purposes 
-        if doprint:
-            printout('Correction required. Initializing...')
-            
-        # Time / speed testing for lambdacorr.py
+        new = time.time()
+        elapsed = new - end
+        print("pre-loop setup:     " + str(elapsed))
+
+    # ====================== PERFORM MAIN TEA LOOP ====================== #
+
+    while repeat:
+        # Output iteration number
+        if ((not doprint) & (not times)):
+            stdout.write(' ' + str(it_num) + '\r')
+            stdout.flush()
+
+        # Time / speed testing for lagrange.py
         if times:
             ini = time.time()
         
-        # Execute lambda correction
-        lambdacorr_data = lc.lambdacorr(it_num, datadir, doprint, \
-                                                   lagrange_data)
+        # Execute Lagrange minimization
+        lagrange_data = lg.lagrange(it_num, datadir, doprint, lambdacorr_data)
         
-        # Print for debugging purposes
+        # Time / speed testing for lagrange.py
         if times:
             fin = time.time()
             elapsed = fin - ini
-            print("lambcorr" + str(it_num).rjust(4) + " :      " + \
-                                                      str(elapsed))
+            print("lagrange" + str(it_num).rjust(4) + " :      " + str(elapsed))    
+          
+        # Print for debugging purposes
+        if doprint:
+            printout('Iteration %d Lagrange complete. Starting lambda correction...', it_num)
         
-        # Print for debugging purposes
-        if doprint:
-            printout('Iteration %d lambda correction complete. Checking precision...', it_num)
-
-    # Lambda correction is not needed
-    else:
-        # Pass previous Lagrange results as inputs to next iteration
-        lambdacorr_data = lagrange_data
-
-        # Print for debugging purposes
-        if doprint:
-            printout('Iteration %d did not need lambda correction.', it_num)
-    
-    # Retrieve most recent iteration values
-    input_new = lambdacorr_data
-
-    # Take most recent x_i and x_bar values    
-    x_new     = input_new[4]
-    x_bar_new = input_new[7]
-    
-    # If max iteration not met, continue with next iteration cycle
-    if it_num < maxiter: 
-        # Add 1 to iteration number
-        it_num += 1
-
-        # Print for debugging purposes
-        if doprint:
-            printout('Max interation not met. Starting next iteration...\n')
-    
-    # ============== Stop the loop, max iteration reached ============== #
-
-    # Stop if max iteration is reached 
-    else:
-        # Print to screen
-        printout('Maximum iteration reached, ending minimization.\n')
-
-        # Set repeat to False to stop the loop
-        repeat = False
-
-        # Calculate delta values
-        delta = x_new - x
-
-        # Calculate delta_bar values
-        delta_bar = x_bar_new - x_bar
+        # Take final x_i mole numbers from last Lagrange calculation 
+        lagrange_x = lagrange_data[4]
         
-        # Name output files with corresponding iteration number name
-        file_results       = datadirr + '/results-machine-read.txt'
-        file_fancyResults  = datadirr + '/results-visual.txt'
+        # Check if x_i have negative mole numbers, and if yes perform lambda correction
+        if where((lagrange_x < 0) == True)[0].size != 0:
+            # Print for debugging purposes 
+            if doprint:
+                printout('Correction required. Initializing...')
+                
+            # Time / speed testing for lambdacorr.py
+            if times:
+                ini = time.time()
+            
+            # Execute lambda correction
+            lambdacorr_data = lc.lambdacorr(it_num, datadir, doprint, \
+                                                       lagrange_data)
+            
+            # Print for debugging purposes
+            if times:
+                fin = time.time()
+                elapsed = fin - ini
+                print("lambcorr" + str(it_num).rjust(4) + " :      " + \
+                                                          str(elapsed))
+            
+            # Print for debugging purposes
+            if doprint:
+                printout('Iteration %d lambda correction complete. Checking precision...', it_num)
 
-        # Export all values into machine and human readable output files  
-        form.output(datadirr, header, it_num, speclist, x, x_new, delta,    \
-                    x_bar, x_bar_new, delta_bar, file_results, doprint)
-        form.fancyout_results(datadirr, header, it_num, speclist, x, x_new, \
-                              delta, x_bar, x_bar_new, delta_bar, pressure, \
-                              temp, file_fancyResults, doprint)
+        # Lambda correction is not needed
+        else:
+            # Pass previous Lagrange results as inputs to next iteration
+            lambdacorr_data = lagrange_data
+
+            # Print for debugging purposes
+            if doprint:
+                printout('Iteration %d did not need lambda correction.', it_num)
+        
+        # Retrieve most recent iteration values
+        input_new = lambdacorr_data
+
+        # Take most recent x_i and x_bar values    
+        x_new     = input_new[4]
+        x_bar_new = input_new[7]
+        
+        # If max iteration not met, continue with next iteration cycle
+        if it_num < maxiter: 
+            # Add 1 to iteration number
+            it_num += 1
+
+            # Print for debugging purposes
+            if doprint:
+                printout('Max interation not met. Starting next iteration...\n')
+        
+        # ============== Stop the loop, max iteration reached ============== #
+
+        # Stop if max iteration is reached 
+        else:
+            # Print to screen
+            printout('Maximum iteration reached, ending minimization.\n')
+
+            # Set repeat to False to stop the loop
+            repeat = False
+
+            # Calculate delta values
+            delta = x_new - x
+
+            # Calculate delta_bar values
+            delta_bar = x_bar_new - x_bar
+            
+            # Name output files with corresponding iteration number name
+            file_results       = datadirr + '/results-machine-read.txt'
+            file_fancyResults  = datadirr + '/results-visual.txt'
+
+            # Export all values into machine and human readable output files  
+            form.output(datadirr, header, it_num, speclist, x, x_new, delta,    \
+                        x_bar, x_bar_new, delta_bar, file_results, doprint)
+            form.fancyout_results(datadirr, header, it_num, speclist, x, x_new, \
+                                  delta, x_bar, x_bar_new, delta_bar, pressure, \
+                                  temp, file_fancyResults, doprint)
 

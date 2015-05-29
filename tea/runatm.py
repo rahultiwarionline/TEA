@@ -49,6 +49,8 @@
 # ******************************* END LICENSE *******************************
 
 from readconf import *
+from balance import *
+from iterate import *
 
 # Setup for time/speed testing
 if times:
@@ -125,8 +127,8 @@ if location_out[-1] != '/':
     location_out += '/'
 
 # Retrieve pre-atm file
-infile  = sys.argv[1:][0]
-
+#infile  = "../doc/examples/quick_example/quick_example.atm"
+infile = raw_input("Enter Input ATM File Location> ")
 # If input file does not exist break
 try:
     f = open(infile)
@@ -134,7 +136,7 @@ except:
     raise IOError ("\n\nPre-atmospheric file does not exist.\n")
 
 # Retrieve current output directory name given by user
-desc    = sys.argv[1:][1]
+desc    = raw_input("What would you like the result directory to be named?> ")
 
 # Set up locations of necessary scripts and directories of files
 inputs_dir       = location_out + desc + "/inputs/"
@@ -265,7 +267,8 @@ for q in np.arange(n_runs)[1:]:
         ini = time.time()
     
     # Get balanced initial guess for the current line, run balance.py
-    subprocess.call([loc_balance, loc_headerfile, desc], shell = inshell)
+    #subprocess.call([loc_balance, loc_headerfile, desc], shell = inshell)
+    balanceFunction(loc_headerfile, desc, location_out)
     
     # Retrieve balance runtime
     if times:
@@ -274,8 +277,7 @@ for q in np.arange(n_runs)[1:]:
         print("balance.py:         " + str(elapsed))
     
     # Execute main TEA loop for the current line, run iterate.py
-    subprocess.call([loc_iterate, loc_headerfile, desc], shell = inshell)
-
+    iterator(loc_headerfile, desc, location_out)
     # Read output of TEA loop
     header, it_num, speclist, y, x, delta, y_bar, x_bar, delta_bar \
         = form.readoutput(location_out + desc + '/results/' + single_res[0])

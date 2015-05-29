@@ -93,161 +93,164 @@ import format as form
 # =============================================================================
 
 # Correct location_TEA name
-if location_out[-1] != '/':
-    location_out += '/'
+
 
 # Read run-time arguments
-header = argv[1:][0]              # Name of header file
-desc   = argv[1:][1]              # Directory name
+def balanceFunction(head, destination, location_out):
+    if location_out[-1] != '/':
+        location_out += '/'
 
-# Create and name outputs and results directories if they do not exist
-datadir   = location_out + desc + '/outputs/' + 'transient/'  
+    header = head              # Name of header file
+    desc   = destination              # Directory name
 
-# If output directory does not exist already, make it
-if not os.path.exists(datadir): os.makedirs(datadir)
+    # Create and name outputs and results directories if they do not exist
+    datadir   = location_out + desc + '/outputs/' + 'transient/'  
 
-# Read in values from header file
-pressure, temp, i, j, speclist, a, b, c = form.readheader(header)
+    # If output directory does not exist already, make it
+    if not os.path.exists(datadir): os.makedirs(datadir)
 
-# Print b values for debugging purposes
-if doprint:
-    print("b values: " + str(b))
+    # Read in values from header file
+    pressure, temp, i, j, speclist, a, b, c = form.readheader(header)
 
-# Find chunk of ai_j array that will allow the corresponding yi values
-#      to be free variables such that all elements are considered
-for n in np.arange(i - j + 1):
-    # Get lower and upper indices for chunk of ai_j array to check
-    lower = n
-    upper = n + j
-    
-    # Retrieve chunk of ai_j that would contain free variables
-    a_chunk = a[lower:upper]
-    
-    # Sum columns to get total of ai_j in chunk for each species 'j'
-    check = map(sum,zip(*a_chunk))
-    
-    # Look for zeros in check. If a zero is found, this chunk of data can't 
-    # be used for free variables, as this signifies an element is ignored
-    has_zero = 0 in check
-    
-    # If zero not found, create list of free variables' indices
-    if has_zero == False:
-        free_id = []
-        for m in np.arange(j):
-            if doprint == True:
-                print('Using y_' + np.str(n + m + 1) + ' as a free variable')
-            free_id = np.append(free_id, n + m)
-        break
+    # Print b values for debugging purposes
+    if doprint:
+        print("b values: " + str(b))
 
-# Set initial guess of non-free y_i 
-scale = 0.1
-
-# Assume that all or some y_i are negative or zeros
-nofit = True
-
-# Loop until all y_i are non-zero positive
-while nofit:
-    # Set up list of 'known' initial mole numbers before and after free chunk
-    pre_free = np.zeros(free_id[0]) + scale
-    post_free = np.zeros(i - free_id[-1] - 1) + scale
-    
-    # Set up list of free variables
-    free = []
-    for m in np.arange(j):
-        name = 'y_unknown_' + np.str(m)
-        free = np.append(free, Symbol(name))
-
-    # Combine free and 'known' to make array of y_initial mole numbers
-    y_init = np.append(pre_free,      free)
-    y_init = np.append(  y_init, post_free)
-
-    # Make 'j' equations satisfying mass balance equation (17) in TEA theory doc:
-    # sum_i(ai_j * y_i) = b_j
-    eq = [[]]
-    for m in np.arange(j):
-        rhs = 0
-        for n in np.arange(i):
-            rhs += a[n, m] * y_init[n]
-        rhs -= b[m]
-        eq = np.append(eq, rhs)
+    # Find chunk of ai_j array that will allow the corresponding yi values
+    #      to be free variables such that all elements are considered
+    for n in np.arange(i - j + 1):
+        # Get lower and upper indices for chunk of ai_j array to check
+        lower = n
+        upper = n + j
         
-    # Solve system of linear equations to get free y_i variables
-    result = solve(list(eq), list(free), rational=False)
-    
-    # Correct for no-solution-found results. 
-    # If no solution found, decrease scale size.
-    if result == []:
-        scale /= 10
-        if doprint:
-            print("Correcting initial guesses for realistic mass. \
-                    Trying " + str(scale) + "...")
+        # Retrieve chunk of ai_j that would contain free variables
+        a_chunk = a[lower:upper]
+        
+        # Sum columns to get total of ai_j in chunk for each species 'j'
+        check = map(sum,zip(*a_chunk))
+        
+        # Look for zeros in check. If a zero is found, this chunk of data can't 
+        # be used for free variables, as this signifies an element is ignored
+        has_zero = 0 in check
+        
+        # If zero not found, create list of free variables' indices
+        if has_zero == False:
+            free_id = []
+            for m in np.arange(j):
+                if doprint == True:
+                    print('Using y_' + np.str(n + m + 1) + ' as a free variable')
+                free_id = np.append(free_id, n + m)
+            break
 
-    # Correct for negative-mass results.  If found, decrease scale size.
-    else:
-        # Assume no negatives and check
-        hasneg = False    
+    # Set initial guess of non-free y_i 
+    scale = 0.1
+
+    # Assume that all or some y_i are negative or zeros
+    nofit = True
+
+    # Loop until all y_i are non-zero positive
+    while nofit:
+        # Set up list of 'known' initial mole numbers before and after free chunk
+        pre_free = np.zeros(free_id[0]) + scale
+        post_free = np.zeros(i - free_id[-1] - 1) + scale
+        
+        # Set up list of free variables
+        free = []
         for m in np.arange(j):
-            if result[free[m]] < 0: 
-                hasneg = True
-        # If negatives found, decrease scale size
-        if hasneg:
+            name = 'y_unknown_' + np.str(m)
+            free = np.append(free, Symbol(name))
+
+        # Combine free and 'known' to make array of y_initial mole numbers
+        y_init = np.append(pre_free,      free)
+        y_init = np.append(  y_init, post_free)
+
+        # Make 'j' equations satisfying mass balance equation (17) in TEA theory doc:
+        # sum_i(ai_j * y_i) = b_j
+        eq = [[]]
+        for m in np.arange(j):
+            rhs = 0
+            for n in np.arange(i):
+                rhs += a[n, m] * y_init[n]
+            rhs -= b[m]
+            eq = np.append(eq, rhs)
+            
+        # Solve system of linear equations to get free y_i variables
+        result = solve(list(eq), list(free), rational=False)
+        
+        # Correct for no-solution-found results. 
+        # If no solution found, decrease scale size.
+        if result == []:
             scale /= 10
             if doprint:
-                print("Negative numbers found in fit.")
                 print("Correcting initial guesses for realistic mass. \
                         Trying " + str(scale) + "...")
-        # If no negatives found, exit the loop (good fit is found)
+
+        # Correct for negative-mass results.  If found, decrease scale size.
         else:
-            nofit = False
-            if doprint:
-                print(str(scale) + " provided a viable initial guess.")
-    
-# Gather the results
-fit = []
-for m in np.arange(j):
-    fit = np.append(fit, result[free[m]])
+            # Assume no negatives and check
+            hasneg = False    
+            for m in np.arange(j):
+                if result[free[m]] < 0: 
+                    hasneg = True
+            # If negatives found, decrease scale size
+            if hasneg:
+                scale /= 10
+                if doprint:
+                    print("Negative numbers found in fit.")
+                    print("Correcting initial guesses for realistic mass. \
+                            Trying " + str(scale) + "...")
+            # If no negatives found, exit the loop (good fit is found)
+            else:
+                nofit = False
+                if doprint:
+                    print(str(scale) + " provided a viable initial guess.")
+        
+    # Gather the results
+    fit = []
+    for m in np.arange(j):
+        fit = np.append(fit, result[free[m]])
 
-# Put the result into the final y_init array
-y_init[free_id[0]:free_id[j-1]+1] = fit
+    # Put the result into the final y_init array
+    y_init[free_id[0]:free_id[j-1]+1] = fit
 
-# This part of the code is only for debugging purposes 
-# It rounds the values and checks whether the balance equation is satisfied
-# No values are changed and this serves solely as a check 
-if doprint == True:
-    print('\nCHECKS:')
-for m in np.arange(j):
-    bool = round((sum(a[:,m] * y_init[:])), 2) == round(b[m], 2)
-    if bool == True:
-        if doprint == True:
-            print('Equation ' + np.str(m+1) + ' is satisfied.')
-    if bool == False:
-        print('Equation ' + np.str(m+1) + \
-                         ' is NOT satisfied. Check for errors!')
+    # This part of the code is only for debugging purposes 
+    # It rounds the values and checks whether the balance equation is satisfied
+    # No values are changed and this serves solely as a check 
+    if doprint == True:
+        print('\nCHECKS:')
+    for m in np.arange(j):
+        bool = round((sum(a[:,m] * y_init[:])), 2) == round(b[m], 2)
+        if bool == True:
+            if doprint == True:
+                print('Equation ' + np.str(m+1) + ' is satisfied.')
+        if bool == False:
+            print('Equation ' + np.str(m+1) + \
+                             ' is NOT satisfied. Check for errors!')
 
-# Set iteration number to zero
-it_num    = 0
+    # Set iteration number to zero
+    it_num    = 0
 
-# Put all initial mole numbers in y array
-y         = y_init
+    # Put all initial mole numbers in y array
+    y         = y_init
 
-# Make y_bar (sum of all y values)
-y_bar     = np.sum(y)
+    # Make y_bar (sum of all y values)
+    y_bar     = np.sum(y)
 
-# Initialize delta variables to 0. (this signifies the first iteration)
-delta     = np.zeros(i)   
-delta_bar = np.sum(delta) 
+    # Initialize delta variables to 0. (this signifies the first iteration)
+    delta     = np.zeros(i)   
+    delta_bar = np.sum(delta) 
 
-# Name output files with corresponding iteration number name
-file       = datadir + '/lagrange-iteration-' + np.str(it_num) + \
-                                              '-machine-read.txt'
-file_fancy = datadir + '/lagrange-iteration-' + np.str(it_num) + \
-                                                    '-visual.txt'
+    # Name output files with corresponding iteration number name
+    file       = datadir + '/lagrange-iteration-' + np.str(it_num) + \
+                                                  '-machine-read.txt'
+    file_fancy = datadir + '/lagrange-iteration-' + np.str(it_num) + \
+                                                        '-visual.txt'
 
-# Put results into machine readable file
-form.output(datadir, header, it_num, speclist, y, y, delta, \
-            y_bar, y_bar, delta_bar, file, doprint)
+    # Put results into machine readable file
+    form.output(datadir, header, it_num, speclist, y, y, delta, \
+                y_bar, y_bar, delta_bar, file, doprint)
 
-# Put results into human readable file
-form.fancyout(datadir, it_num, speclist, y, y, delta, y_bar, \
-              y_bar, delta_bar, file_fancy, doprint)
+    # Put results into human readable file
+    form.fancyout(datadir, it_num, speclist, y, y, delta, y_bar, \
+                  y_bar, delta_bar, file_fancy, doprint)
 
